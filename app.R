@@ -132,6 +132,7 @@ ui <- fluidPage(
         "Mean Coolest Location Average Temperature from the most recent protocol",
         value = 0
       ),
+      numericInput("setpoint", "Unit Setpoint", value = 0),
       numericInput("usl", "Upper Specification Limit", value = 0),
       numericInput("lsl", "Lower Specification Limit", value = 0),
       fileInput(
@@ -157,7 +158,7 @@ server <- function(input, output, session) {
   output$moved_probe <- renderUI({
     req(input$moved_probe)
     if (input$moved_probe == "Yes") {
-      dateInput("move_date", "Select a date", value = Sys.Date())
+      dateInput("move_date", "Select the date the monitoring probe was moved", value = Sys.Date())
       
     }
   })
@@ -189,6 +190,7 @@ server <- function(input, output, session) {
     req(input$mean_protocol)
     req(input$mean_cold)
     req(input$mean_warm)
+    req(input$setpoint)
     req(input$lsl)
     req(input$usl)
     req(input$val_type)
@@ -209,6 +211,7 @@ server <- function(input, output, session) {
     cached_data$start_date <- format(hourly$t_stamp[1], "%d-%b-%Y")
     cached_data$end_date <- format(hourly$t_stamp[nrow(hourly)], "%d-%b-%Y")
     cached_data$move_date <- NULL
+    cached_data$split_data <- reval & mv_probe
     
     if (mv_probe) {
       req(input$move_date)
@@ -250,8 +253,8 @@ server <- function(input, output, session) {
       print("plot beg")
       cached_data$p1 <- ggplot(data = plot_frame, aes(
         x = t_stamp,
-        ymax = 10,
-        ymin = 0
+        ymax = max(hourly$temp),
+        ymin = min(hourly$temp)
       )) +
         geom_line(aes(
           y = temp, 
@@ -295,7 +298,7 @@ server <- function(input, output, session) {
         scale_color_manual(name = "Legend", values = c(
           "Temperature" = "red",  # Example color (default ggplot2 palette)
           "Specification Limits" = "magenta2",
-          "Control Limits" = "orange",
+          "Control Limits" = "green",
           "Statistical Limits" = "blue",
           "Mean" = "black"
         )) +
@@ -339,7 +342,7 @@ server <- function(input, output, session) {
           "Lower Control Limit",
           "Upper Statistical Limit",
           "Lower Statistical Limit",
-          "Investigation Required?",
+          "Excursion Identified?",
           "Risk of OOC?",
           "Date Generated"
         ),
@@ -370,8 +373,10 @@ server <- function(input, output, session) {
       print(mv_date)
       print(head(seg_2))
       initial_mean <- mean(head(seg_2$temp, 100))
-      UCL <- max(input$usl - (input$mean_warm - initial_mean), input$usl)
-      LCL <- min(input$lsl + (initial_mean - input$mean_cold), input$lsl)
+      #use_initial <- (input$setpoint - ) <------ Setpoint change implementation
+      #initial_mean <- 
+      UCL <- min(input$usl - (input$mean_warm - initial_mean), input$usl)
+      LCL <- max(input$lsl + (initial_mean - input$mean_cold), input$lsl)
       plot_frame <- seg_2 %>% mutate(
         UCL = UCL,
         LCL = LCL,
@@ -387,8 +392,8 @@ server <- function(input, output, session) {
       ##plot 2 object
       cached_data$p2 <- ggplot(data = plot_frame, aes(
         x = t_stamp,
-        ymax = 10,
-        ymin = 0
+        ymax = max(hourly$temp),
+        ymin = min(hourly$temp)
       )) +
         geom_line(aes(
           y = temp, 
@@ -432,7 +437,7 @@ server <- function(input, output, session) {
         scale_color_manual(name = "Legend", values = c(
           "Temperature" = "red",  # Example color (default ggplot2 palette)
           "Specification Limits" = "magenta2",
-          "Control Limits" = "orange",
+          "Control Limits" = "green",
           "Statistical Limits" = "blue",
           "Mean" = "black"
         )) +
@@ -478,7 +483,7 @@ server <- function(input, output, session) {
           "Lower Control Limit",
           "Upper Statistical Limit",
           "Lower Statistical Limit",
-          "Investigation Required?",
+          "Excursion Identified?",
           "Risk of OOC?",
           "Date Generated"
         ),
@@ -504,8 +509,8 @@ server <- function(input, output, session) {
       cached_data$p1 <- NULL
       cached_data$table_1 <- NULL
       initial_mean <- mean(head(hourly$temp, 100))
-      UCL <- max(input$usl - (input$mean_warm - initial_mean), input$usl)
-      LCL <- min(input$lsl + (initial_mean - input$mean_cold), input$lsl)
+      UCL <- min(input$usl - (input$mean_warm - initial_mean), input$usl)
+      LCL <- max(input$lsl + (initial_mean - input$mean_cold), input$lsl)
       plot_frame <- hourly %>% mutate(
         UCL = UCL,
         LCL = LCL,
@@ -518,8 +523,8 @@ server <- function(input, output, session) {
       ##plot 1 object
       cached_data$p2 <- ggplot(data = plot_frame, aes(
         x = t_stamp,
-        ymax = 10,
-        ymin = 0
+        ymax = max(hourly$temp),
+        ymin = min(hourly$temp)
       )) +
         geom_line(aes(
           y = temp, 
@@ -563,7 +568,7 @@ server <- function(input, output, session) {
         scale_color_manual(name = "Legend", values = c(
           "Temperature" = "red",  # Example color (default ggplot2 palette)
           "Specification Limits" = "magenta2",
-          "Control Limits" = "orange",
+          "Control Limits" = "green",
           "Statistical Limits" = "blue",
           "Mean" = "black"
         )) +
@@ -605,7 +610,7 @@ server <- function(input, output, session) {
           "Lower Control Limit",
           "Upper Statistical Limit",
           "Lower Statistical Limit",
-          "Investigation Required?",
+          "Excursion Identified?",
           "Risk of OOC?",
           "Date Generated"
         ),
@@ -677,7 +682,7 @@ server <- function(input, output, session) {
       ################## YEARLY TEMPERATURE #################################################################
       
       #plot "2"
-      if(!is.null(cached_data$move_date)){
+      if(cached_data$split_data){ 
         pdf_file <- file.path(temp_dir,
                               paste0(
                                 input$asset_id, "_",
@@ -721,7 +726,7 @@ server <- function(input, output, session) {
       
       ################ generate table "2"###################
       
-      if(!is.null(cached_data$move_date)){
+      if(cached_data$split_data){
         csv_file <- file.path(temp_dir,
                               paste0(
                                 input$asset_id, "_",
@@ -760,7 +765,7 @@ server <- function(input, output, session) {
       
       #######plot 1 ########################################################
       
-      if (!is.null(cached_data$p1)) {
+      if (cached_data$split_data) {
         pdf_file <- file.path(temp_dir,
                               paste0(
                                 input$asset_id, "_",
@@ -789,7 +794,7 @@ server <- function(input, output, session) {
       
       ##### table 1 ############################################################
       
-      if (!is.null(cached_data$table_1)) {
+      if (cached_data$split_data) {
         csv_file <- file.path(temp_dir,
                               paste0(
                                 input$asset_id, "_",
